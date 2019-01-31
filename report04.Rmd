@@ -1,0 +1,184 @@
+---
+title: "MNIST"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### MNIST data prediction with Random forest
+```{r include=FALSE}
+library(Rborist)
+library(dslabs)
+library(ggplot2)
+library(caret)
+library(matrixStats) 
+library(randomForest) 
+```
+
+Load the data
+```{r}
+mnist <- read_mnist()
+names(mnist)
+dim(mnist$train$images) 
+class(mnist$train$labels) 
+table(mnist$train$labels) 
+```
+
+Subsetting the data for train
+```{r}
+set.seed(123) 
+index <- sample(nrow(mnist$train$images), 10000) 
+x <- mnist$train$images[index,] 
+y <- factor(mnist$train$labels[index]) 
+
+```
+
+Subsetting the data for test
+```{r}
+index <- sample(nrow(mnist$train$images), 1000) 
+x_test <- mnist$train$images[index,] 
+y_test <- factor(mnist$train$labels[index])
+```
+
+Explore the data
+```{r}
+sds <- colSds(x) 
+qplot(sds, bins = 256, color = I("black"))
+```
+
+Identification of near zero variance predictors with nearZeroVar function in caret package
+```{r}
+nzv <- nearZeroVar(x) # removes columns with near zero variance
+image(matrix(1:784 %in% nzv, 28, 28)) # shows removed or near zero variance columns
+```
+
+Get the col index for analysis
+```{r}
+col_index <- setdiff(1:ncol(x), nzv) 
+length(col_index) 
+```
+
+Get the columns named in train and test for analysis
+```{r}
+colnames(x) <- 1:ncol(mnist$train$images) 
+colnames(x_test) <- colnames(mnist$train$images)
+```
+
+Tuning the parameters with crossvalidation
+```{r}
+control <- trainControl(method="cv", number = 5, p = 0.8) 
+grid <- expand.grid(minNode = c(1) , predFixed = c(10, 15, 35))
+train_rf <-  train(x[ , col_index],                     
+                   y,                     
+                   method = "Rborist",                     
+                   nTree = 50,                    
+                   trControl = control,                    
+                   tuneGrid = grid,                    
+                   nSamp = 5000) 
+ggplot(train_rf) 
+```
+
+Get the best tuning parameter
+```{r}
+train_rf$bestTune 
+```
+
+Modeling 
+```{r}
+fit_rf <- Rborist(x[ ,col_index], y,                    
+                  nTree = 1000,                   
+                  minNode = train_rf$bestTune$minNode,                   
+                  predFixed = train_rf$bestTune$predFixed)
+```
+
+Prediction
+```{r}
+pred <- predict(fit_rf, x_test[ ,col_index])
+```
+
+Getting predicted values in the same levels of y
+```{r}
+y_hat_rf <- factor(levels(y)[pred$yPred]) 
+```
+
+Confusion matrix
+```{r}
+cm <- confusionMatrix(y_hat_rf, y_test) 
+cm
+cm$overall["Accuracy"] 
+```
+
+# MNIST data prediction with random forest using randomforest package
+```{r}
+rf <- randomForest(x, y,  ntree = 50)
+imp <- importance(rf)
+```
+
+Plot the imp variables in to image
+```{r}
+image(matrix(imp, 28, 28))
+```
+
+# MNIST data prediction with knn
+
+Crossvalidation for tuning the parameters
+```{r}
+n <- 1000 
+b <- 2 
+index <- sample(nrow(x), n) 
+control <- trainControl(method = "cv", number = b, p = .9) 
+train_knn <- train(x[index ,col_index], y[index],
+                   method = "knn",                     
+                   tuneGrid = data.frame(k = c(3,5,7)),                    
+                   trControl = control)
+ggplot(train_knn)
+```
+
+Modeling
+```{r}
+fit_knn<- knn3(x[ ,col_index], y,  k = 5)
+```
+
+Prediction
+```{r}
+y_hat_knn <- predict(fit_knn,                          
+                     x_test[, col_index],                          
+                     type="class") 
+```
+
+Confusion Matrix
+```{r}
+cm <- confusionMatrix(y_hat_knn, factor(y_test)) 
+cm$overall["Accuracy"]
+```
+
+
+# Try Ensemble with randomforest and knn for prediction
+
+predict with randomforest, get the predictions
+```{r}
+p_rf <- predict(fit_rf, x_test[,col_index])$census
+p_rf<- p_rf / rowSums(p_rf) 
+```
+
+Predict with KNN
+```{r}
+p_knn  <- predict(fit_knn, x_test[,col_index], data=mnist$test) 
+```
+
+Get the averages probabilities
+```{r}
+p <- (p_rf + p_knn)/2 
+```
+
+Predicted class
+```{r}
+y_pred <- factor(apply(p, 1, which.max)-1) 
+```
+
+Confusion Matrix
+```{r}
+confusionMatrix(y_pred, y_test)
+```

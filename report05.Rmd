@@ -1,5 +1,5 @@
 ---
- title: "MNIST"
+title: "MNIST"
 output: github_document
 ---
 
@@ -18,7 +18,7 @@ library(kernlab)
 
 Load the data
 ```{r}
-if(!exists("mnist")) mnist <- read_mnist()
+mnist <- read_mnist()
 ```
 
 Run PCA

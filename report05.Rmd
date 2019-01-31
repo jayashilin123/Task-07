@@ -1,0 +1,67 @@
+---
+ title: "MNIST"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### MNIST data prediction with PCA and SVM
+```{r include=FALSE}
+library(dslabs)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(kernlab)
+```
+
+Load the data
+```{r}
+if(!exists("mnist")) mnist <- read_mnist()
+```
+
+Run PCA
+```{r}
+pca <- prcomp(mnist$train$images)
+
+plot(pca$sdev)
+```
+
+```{r}
+summary(pca)$importance[,1:5] %>% knitr::kable()
+```
+
+Plot 2000 samples digits with PC1 and PC2
+```{r}
+data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],            
+           label=factor(mnist$train$label)) %>%   
+  sample_n(2000) %>%    
+  ggplot(aes(PC1, PC2, fill=label))+   
+  geom_point(cex=3, pch=21)
+```
+
+Taking 36 principal components to analyse the data
+create train and test sets with x & y components
+```{r}
+K <- 36 
+x_train <- pca$x[,1:K] 
+y <- factor(mnist$train$labels) 
+
+col_means <- colMeans(mnist$test$images) 
+x_test <- sweep(mnist$test$images, 2, col_means) %*% pca$rotation 
+x_test <- x_test[,1:K]
+```
+
+Model with Support vector machine algorithm
+```{r}
+svm.linear <- ksvm(y~x_train, scale =FALSE, kernel="vanilladot")
+predict <- predict(svm.linear, x_test)
+confusionMatrix(predict, factor(mnist$test$labels))
+```
+
+Plot the predictions
+```{r}
+plot(predict)
+```
+
